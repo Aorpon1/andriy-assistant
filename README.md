@@ -3,8 +3,13 @@
 
 ## mouse_mover.py — рандомний рух мишки (без кліків)
 
-1. Встанови Python з https://python.org (якщо ще нема).
-2. У терміналі (cmd) виконай: `pip install pyautogui`
-3. Запусти: `python mouse_mover.py`
+### Windows (нічого встановлювати не треба, крім Python)
+1. Встанови Python з https://python.org (якщо ще нема). Під час установки постав галочку **"Add Python to PATH"**.
+2. Завантаж з цього репозиторію два файли: `mouse_mover.py` і `start_mouse_mover.bat` (поклади їх в одну папку).
+3. Зроби подвійний клік по `start_mouse_mover.bat`.
 
-Зупинити: натисни `Ctrl+C` у терміналі або різко посунь мишку у лівий верхній кут екрана.
+### Mac / Linux
+1. `pip install pyautogui`
+2. `python mouse_mover.py`
+
+Зупинити: `Ctrl+C` у вікні програми або просто закрий її вікно.
