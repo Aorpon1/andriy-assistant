@@ -1,0 +1,141 @@
+# ===================================================================
+# Дрон 7 — розкладка OSD під ЛОНГ-РЕНДЖ (ArduCopter + DJI O4/N3)
+# Формат: Mission Planner .param  ->  NAME,VALUE
+# Як завантажити:
+#   Mission Planner -> CONFIG -> Full Parameter List
+#   -> "Load from file" -> обрати цей файл -> "Write Params" -> перезавантажити.
+# Безпека: цей файл задає ЛИШЕ розкладку + попередження.
+#   OSD_TYPE / SERIAL6_PROTOCOL НЕ чіпаються (DisplayPort у тебе вже стоїть).
+#   Якщо MP напише "param not found" на якийсь рядок — це нормально, пропусти.
+# ===================================================================
+
+# ---- Увімкнути два екрани ----
+OSD1_ENABLE,1
+OSD2_ENABLE,1
+
+# ===================================================================
+# ЕКРАН 1 — ОСНОВНИЙ (політ + повернення)
+# ===================================================================
+
+# верх-ліво: таймер + супутники
+OSD1_FLTIME_EN,1
+OSD1_FLTIME_X,1
+OSD1_FLTIME_Y,1
+OSD1_SATS_EN,1
+OSD1_SATS_X,1
+OSD1_SATS_Y,2
+
+# верх-центр: режим + курс
+OSD1_FLTMODE_EN,1
+OSD1_FLTMODE_X,23
+OSD1_FLTMODE_Y,1
+OSD1_HEADING_EN,1
+OSD1_HEADING_X,22
+OSD1_HEADING_Y,2
+
+# верх-право: якість звʼязку + RSSI
+OSD1_LINK_QUALITY_EN,1
+OSD1_LINK_QUALITY_X,44
+OSD1_LINK_QUALITY_Y,1
+OSD1_RSSI_EN,1
+OSD1_RSSI_X,44
+OSD1_RSSI_Y,2
+
+# центр: дім (стрілка+дистанція), горизонт, приціл
+OSD1_HOME_EN,1
+OSD1_HOME_X,24
+OSD1_HOME_Y,5
+OSD1_HORIZON_EN,1
+OSD1_HORIZON_X,16
+OSD1_HORIZON_Y,8
+OSD1_CROSSHAIR_EN,1
+OSD1_CROSSHAIR_X,25
+OSD1_CROSSHAIR_Y,8
+
+# ліво-центр: висота + вертикальна швидкість
+OSD1_ALTITUDE_EN,1
+OSD1_ALTITUDE_X,2
+OSD1_ALTITUDE_Y,8
+OSD1_VSPEED_EN,1
+OSD1_VSPEED_X,2
+OSD1_VSPEED_Y,9
+
+# право-центр: шляхова швидкість
+OSD1_GSPEED_EN,1
+OSD1_GSPEED_X,44
+OSD1_GSPEED_Y,8
+
+# низ-ліво: напруга пакета + напруга на банку
+OSD1_BATVOLT_EN,1
+OSD1_BATVOLT_X,1
+OSD1_BATVOLT_Y,16
+# CELLVOLT = середня напруга на банку (на деяких прошивках назва інша - тоді пропуститься)
+OSD1_CELLVOLT_EN,1
+OSD1_CELLVOLT_X,1
+OSD1_CELLVOLT_Y,17
+
+# низ-право: струм + спожито mAh
+OSD1_CURRENT_EN,1
+OSD1_CURRENT_X,43
+OSD1_CURRENT_Y,16
+OSD1_BATUSED_EN,1
+OSD1_BATUSED_X,43
+OSD1_BATUSED_Y,17
+
+# низ-центр: системні повідомлення/попередження
+OSD1_MESSAGE_EN,1
+OSD1_MESSAGE_X,16
+OSD1_MESSAGE_Y,14
+
+# ===================================================================
+# ЕКРАН 2 — НАВІГАЦІЯ / ДЕТАЛІ
+# ===================================================================
+OSD2_DIST_EN,1
+OSD2_DIST_X,1
+OSD2_DIST_Y,1
+OSD2_HOME_EN,1
+OSD2_HOME_X,24
+OSD2_HOME_Y,1
+OSD2_WIND_EN,1
+OSD2_WIND_X,44
+OSD2_WIND_Y,1
+OSD2_ALTITUDE_EN,1
+OSD2_ALTITUDE_X,2
+OSD2_ALTITUDE_Y,8
+OSD2_GSPEED_EN,1
+OSD2_GSPEED_X,44
+OSD2_GSPEED_Y,8
+OSD2_GPSLAT_EN,1
+OSD2_GPSLAT_X,1
+OSD2_GPSLAT_Y,16
+OSD2_GPSLONG_EN,1
+OSD2_GPSLONG_X,1
+OSD2_GPSLONG_Y,17
+OSD2_BATVOLT_EN,1
+OSD2_BATVOLT_X,43
+OSD2_BATVOLT_Y,16
+OSD2_BATUSED_EN,1
+OSD2_BATUSED_X,43
+OSD2_BATUSED_Y,17
+OSD2_STATS_EN,1
+OSD2_STATS_X,18
+OSD2_STATS_Y,10
+
+# ===================================================================
+# ПОПЕРЕДЖЕННЯ (миготіння). Універсальні — безпечні.
+# ===================================================================
+OSD_W_NSAT,10
+OSD_W_LQ,70
+
+# ---- Пороги під МОЮ батарею (розкоментуй і встав своє!) ----
+# LiPo:  ~3.5 В/банку ;  Li-ion: ~3.3 В/банку
+# OSD_W_AVGCELLV,3.5
+# OSD_W_BATVOLT,14.0
+# OSD_W_RSSI,30
+
+# ===================================================================
+# ПЕРЕМИКАННЯ ЕКРАНІВ ТУМБЛЕРОМ (розкоментуй і встав свій канал)
+# OSD_CHAN — RC-канал (напр. 7), яким перемикаєш екрани 1<->2
+# ===================================================================
+# OSD_CHAN,7
+# OSD_SW_METHOD,0
