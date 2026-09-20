@@ -59,9 +59,10 @@ const bool  LED_INVERT = false;          // true, якщо світло гори
 const int   PWM_MAX      = 255;          // діапазон ШІМ (8 біт)
 const int   LED_PWM_FREQ = 1000;         // частота ШІМ 1 кГц
 const int   LED_PWM_RES  = 8;            // роздільність 8 біт -> 0..255
-#if ESP_ARDUINO_VERSION_MAJOR < 3
-  const int LED_LEDC_CH  = 4;            // LEDC-канал для світла (core 2.x)
-#endif
+// Окремий LEDC-канал для світла. Канал 8 = low-speed група, фізично інша,
+// ніж канали серво (ESP32Servo бере перші канали) — тому яскравість більше
+// НЕ зачіпає серво, і навпаки.
+const int   LED_LEDC_CH  = 8;
 
 // ----------------------------------------------------------------------------
 //  2) ГЛОБАЛЬНИЙ СТАН (дефолт при старті)
@@ -105,7 +106,8 @@ int brightnessToPWM(int percent) {
 // Налаштування ШІМ світла через LEDC (правильний спосіб на ESP32)
 void setupLightPwm() {
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
-  ledcAttach(LED_PIN, LED_PWM_FREQ, LED_PWM_RES);        // core 3.x
+  // Явно закріплюємо пін світла за окремим каналом LED_LEDC_CH (core 3.x)
+  ledcAttachChannel(LED_PIN, LED_PWM_FREQ, LED_PWM_RES, LED_LEDC_CH);
 #else
   ledcSetup(LED_LEDC_CH, LED_PWM_FREQ, LED_PWM_RES);     // core 2.x
   ledcAttachPin(LED_PIN, LED_LEDC_CH);
