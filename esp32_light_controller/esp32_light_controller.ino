@@ -56,13 +56,18 @@ const int   PAN_PIN  = 26;               // GPIO26 -> серво PAN
 const int   TILT_PIN = 27;               // GPIO27 -> серво TILT
 const bool  LED_INVERT = false;          // true, якщо світло горить "навпаки"
 
-const int   PWM_MAX = 255;               // діапазон analogWrite на ESP32 (8 біт)
+const int   PWM_MAX      = 255;          // діапазон ШІМ (8 біт)
+const int   LED_PWM_FREQ = 1000;         // частота ШІМ 1 кГц
+const int   LED_PWM_RES  = 8;            // роздільність 8 біт -> 0..255
+#if ESP_ARDUINO_VERSION_MAJOR < 3
+  const int LED_LEDC_CH  = 4;            // LEDC-канал для світла (core 2.x)
+#endif
 
 // ----------------------------------------------------------------------------
 //  2) ГЛОБАЛЬНИЙ СТАН (дефолт при старті)
 // ----------------------------------------------------------------------------
-bool ledOn      = false;   // світло за замовчуванням ВИМКНЕНЕ
-int  brightness = 60;      // яскравість 0..100 %
+bool ledOn      = true;    // ТЕСТ: одразу увімкнено (потім повернемо на false)
+int  brightness = 100;     // ТЕСТ: одразу 100% (потім повернемо на 60)
 bool strobeOn   = false;   // строб вимкнений
 int  strobeHz   = 8;       // швидкість строба 1..20 Гц
 int  panAngle   = 90;      // серво pan  0..180 (90 = центр)
@@ -97,11 +102,25 @@ int brightnessToPWM(int percent) {
   return map(percent, 0, 100, 0, PWM_MAX);   // 0..100%  ->  0..255
 }
 
+// Налаштування ШІМ світла через LEDC (правильний спосіб на ESP32)
+void setupLightPwm() {
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  ledcAttach(LED_PIN, LED_PWM_FREQ, LED_PWM_RES);        // core 3.x
+#else
+  ledcSetup(LED_LEDC_CH, LED_PWM_FREQ, LED_PWM_RES);     // core 2.x
+  ledcAttachPin(LED_PIN, LED_LEDC_CH);
+#endif
+}
+
 int lastPwmWritten = -1;
 void writePWM(int pwm) {
   if (LED_INVERT) pwm = PWM_MAX - pwm;
   if (pwm != lastPwmWritten) {
-    analogWrite(LED_PIN, pwm);
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+    ledcWrite(LED_PIN, pwm);          // core 3.x: пишемо по піну
+#else
+    ledcWrite(LED_LEDC_CH, pwm);      // core 2.x: пишемо по каналу
+#endif
     lastPwmWritten = pwm;
   }
 }
@@ -314,8 +333,9 @@ void setup() {
   Serial.println();
   Serial.println("=== ESP32 Light Controller ===");
 
-  // Світло (analogWrite сам налаштує пін під PWM)
-  writePWM(0);
+  // Світло: налаштовуємо LEDC ШІМ і одразу застосовуємо стан (ТЕСТ = 100%)
+  setupLightPwm();
+  applyLight();
 
   // Серво: резервуємо ЛИШЕ 2 таймери під серво (0,1), а таймери 2,3 лишаємо
   // для analogWrite світла — інакше PWM світла й серво б'ються за таймери ESP32.
