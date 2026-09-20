@@ -64,9 +64,12 @@ const char* AP_SSID     = "FPV-Light";  // назва WiFi мережі
 const char* AP_PASS     = "12345678";   // пароль (мін. 8 символів; "" = без пароля)
 const int   WIFI_CHANNEL = 1;           // КАНАЛ! Такий самий має бути в пульті ESP32
 
-const int   LED_PIN  = D7;              // GPIO13 — PWM яскравості -> IN1 драйвера DRV8871
-const int   PAN_PIN  = D1;              // GPIO5  — серво повороту
-const int   TILT_PIN = D2;              // GPIO4  — серво нахилу
+// Пишемо НОМЕРИ GPIO напряму (а не D7/D1/D2), щоб код компілювався
+// на будь-якій платі ESP8266, навіть якщо обрано "Generic ESP8266 Module".
+// Відповідність: D7=GPIO13, D1=GPIO5, D2=GPIO4.
+const int   LED_PIN  = 13;              // D7 (GPIO13) — PWM яскравості -> IN1 драйвера DRV8871
+const int   PAN_PIN  = 5;               // D1 (GPIO5)  — серво повороту
+const int   TILT_PIN = 4;               // D2 (GPIO4)  — серво нахилу
 const bool  LED_INVERT = false;        // true, якщо світло горить "навпаки"
 
 // ----------------------------------------------------------------------------
