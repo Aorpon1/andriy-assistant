@@ -59,10 +59,6 @@ const bool  LED_INVERT = false;          // true, якщо світло гори
 const int   PWM_MAX      = 255;          // діапазон ШІМ (8 біт)
 const int   LED_PWM_FREQ = 1000;         // частота ШІМ 1 кГц
 const int   LED_PWM_RES  = 8;            // роздільність 8 біт -> 0..255
-// Окремий LEDC-канал для світла. Канал 8 = low-speed група, фізично інша,
-// ніж канали серво (ESP32Servo бере перші канали) — тому яскравість більше
-// НЕ зачіпає серво, і навпаки.
-const int   LED_LEDC_CH  = 8;
 
 // ----------------------------------------------------------------------------
 //  2) ГЛОБАЛЬНИЙ СТАН (дефолт при старті)
@@ -79,6 +75,7 @@ bool          strobePhaseOn    = false;
 
 Servo servoPan;
 Servo servoTilt;
+ESP32PWM lightPwm;         // ШІМ світла через ESP32PWM (з тієї ж бібліотеки, що серво)
 WebServer server(80);
 
 // ----------------------------------------------------------------------------
@@ -103,26 +100,16 @@ int brightnessToPWM(int percent) {
   return map(percent, 0, 100, 0, PWM_MAX);   // 0..100%  ->  0..255
 }
 
-// Налаштування ШІМ світла через LEDC (правильний спосіб на ESP32)
+// Налаштування ШІМ світла через ESP32PWM (координується з серво -> без конфліктів)
 void setupLightPwm() {
-#if ESP_ARDUINO_VERSION_MAJOR >= 3
-  // Явно закріплюємо пін світла за окремим каналом LED_LEDC_CH (core 3.x)
-  ledcAttachChannel(LED_PIN, LED_PWM_FREQ, LED_PWM_RES, LED_LEDC_CH);
-#else
-  ledcSetup(LED_LEDC_CH, LED_PWM_FREQ, LED_PWM_RES);     // core 2.x
-  ledcAttachPin(LED_PIN, LED_LEDC_CH);
-#endif
+  lightPwm.attachPin(LED_PIN, LED_PWM_FREQ, LED_PWM_RES);
 }
 
 int lastPwmWritten = -1;
 void writePWM(int pwm) {
   if (LED_INVERT) pwm = PWM_MAX - pwm;
   if (pwm != lastPwmWritten) {
-#if ESP_ARDUINO_VERSION_MAJOR >= 3
-    ledcWrite(LED_PIN, pwm);          // core 3.x: пишемо по піну
-#else
-    ledcWrite(LED_LEDC_CH, pwm);      // core 2.x: пишемо по каналу
-#endif
+    lightPwm.write(pwm);              // duty 0..255 (8 біт)
     lastPwmWritten = pwm;
   }
 }
@@ -335,14 +322,18 @@ void setup() {
   Serial.println();
   Serial.println("=== ESP32 Light Controller ===");
 
-  // Світло: налаштовуємо LEDC ШІМ і одразу застосовуємо стан (ТЕСТ = 100%)
+  // Резервуємо всі 4 таймери ESP32PWM ДО налаштування світла й серво,
+  // щоб бібліотека сама розподілила ресурси (світло і серво не конфліктують).
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  ESP32PWM::allocateTimer(2);
+  ESP32PWM::allocateTimer(3);
+
+  // Світло через ESP32PWM
   setupLightPwm();
   applyLight();
 
-  // Серво: резервуємо ЛИШЕ 2 таймери під серво (0,1), а таймери 2,3 лишаємо
-  // для analogWrite світла — інакше PWM світла й серво б'ються за таймери ESP32.
-  ESP32PWM::allocateTimer(0);
-  ESP32PWM::allocateTimer(1);
+  // Серво
   servoPan.setPeriodHertz(50);
   servoTilt.setPeriodHertz(50);
   servoPan.attach(PAN_PIN, 500, 2500);
