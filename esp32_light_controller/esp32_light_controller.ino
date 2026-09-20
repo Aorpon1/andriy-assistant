@@ -317,11 +317,10 @@ void setup() {
   // Світло (analogWrite сам налаштує пін під PWM)
   writePWM(0);
 
-  // Серво: резервуємо таймери для ESP32Servo, період 50 Гц, хід 500..2500 мкс
+  // Серво: резервуємо ЛИШЕ 2 таймери під серво (0,1), а таймери 2,3 лишаємо
+  // для analogWrite світла — інакше PWM світла й серво б'ються за таймери ESP32.
   ESP32PWM::allocateTimer(0);
   ESP32PWM::allocateTimer(1);
-  ESP32PWM::allocateTimer(2);
-  ESP32PWM::allocateTimer(3);
   servoPan.setPeriodHertz(50);
   servoTilt.setPeriodHertz(50);
   servoPan.attach(PAN_PIN, 500, 2500);
