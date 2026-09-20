@@ -112,7 +112,7 @@ void ledcAttachCompat(int pin, int ch, int freq, int res) {
 }
 void ledcWriteCompat(int pin, int ch, uint32_t duty) {
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
-  ledcWriteChannel(ch, duty);      // пишемо саме в закріплений канал
+  (void)ch; ledcWrite(pin, duty);  // по піну — перевірено в робочому тесті
 #else
   (void)pin; ledcWrite(ch, duty);
 #endif
