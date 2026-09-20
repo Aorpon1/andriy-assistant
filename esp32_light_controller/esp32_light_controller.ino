@@ -77,8 +77,8 @@ const long  SERVO_PERIOD_US = 20000;     // 20 мс = 20000 мкс
 // ----------------------------------------------------------------------------
 //  2) ГЛОБАЛЬНИЙ СТАН (дефолт при старті)
 // ----------------------------------------------------------------------------
-bool ledOn      = true;    // ДІАГНОСТИКА: лампа УВІМКНЕНА одразу
-int  brightness = 25;      // ДІАГНОСТИКА: НИЗЬКА яскравість 25% (перевірка захисту драйвера)
+bool ledOn      = false;   // світло за замовчуванням ВИМКНЕНЕ (керується з веб)
+int  brightness = 100;     // (яскравість не впливає на цю фару — вбудований драйвер)
 bool strobeOn   = false;   // строб вимкнений
 int  strobeHz   = 8;       // швидкість строба 1..20 Гц
 int  panAngle   = 90;      // серво pan  0..180
@@ -121,30 +121,38 @@ void ledcWriteCompat(int pin, int ch, uint32_t duty) {
 // ----------------------------------------------------------------------------
 //  СВІТЛО
 // ----------------------------------------------------------------------------
-int brightnessToPWM(int percent) {
+int brightnessToPWM(int percent) {   // лишено для JSON/діагностики
   percent = constrain(percent, 0, 100);
-  return map(percent, 0, 100, 0, PWM_MAX);   // 0..100% -> 0..255
+  return map(percent, 0, 100, 0, PWM_MAX);
 }
 
-int lastPwmWritten = -1;
-void writePWM(int pwm) {
-  if (LED_INVERT) pwm = PWM_MAX - pwm;
-  if (pwm != lastPwmWritten) {
-    ledcWriteCompat(LED_PIN, LED_CH, pwm);
-    lastPwmWritten = pwm;
+// Ця фара має ВБУДОВАНИЙ драйвер і не переносить ШІМ -> керуємо чистим DC
+// (вкл/викл через digitalWrite). Плавна яскравість з такою фарою неможлива.
+void setupLight() {
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LED_INVERT ? HIGH : LOW);   // старт: вимкнено
+}
+
+int lastLightState = -1;
+void writeLight(bool on) {
+  int v = on ? 1 : 0;
+  if (v != lastLightState) {
+    digitalWrite(LED_PIN, (LED_INVERT ? !on : on) ? HIGH : LOW);
+    lastLightState = v;
   }
 }
 
 void applyLight() {
-  if (!ledOn) { writePWM(0); strobePhaseOn = false; return; }
-  if (!strobeOn) { writePWM(brightnessToPWM(brightness)); return; }
+  if (!ledOn) { writeLight(false); strobePhaseOn = false; return; }
+  if (!strobeOn) { writeLight(true); return; }
+  // Строб: чергуємо вкл/викл (чистий DC, фара це тягне)
   unsigned long halfPeriod = 500UL / (unsigned long)strobeHz;
   unsigned long now = millis();
   if (now - lastStrobeToggle >= halfPeriod) {
     lastStrobeToggle = now;
     strobePhaseOn = !strobePhaseOn;
   }
-  writePWM(strobePhaseOn ? brightnessToPWM(brightness) : 0);
+  writeLight(strobePhaseOn);
 }
 
 // ----------------------------------------------------------------------------
@@ -350,10 +358,11 @@ void setup() {
   Serial.println();
   Serial.println("=== ESP32 Light Controller (LEDC) ===");
 
-  // Усе через LEDC: світло (кан.0), серво PAN (кан.1), серво TILT (кан.2)
-  ledcAttachCompat(LED_PIN,  LED_CH,  LED_PWM_FREQ, LED_PWM_RES);
-  ledcAttachCompat(PAN_PIN,  PAN_CH,  SERVO_FREQ,   SERVO_RES);
-  ledcAttachCompat(TILT_PIN, TILT_CH, SERVO_FREQ,   SERVO_RES);
+  // Світло: чистий DC через digitalWrite (фара з вбудованим драйвером, без ШІМ)
+  setupLight();
+  // Серво: через LEDC (канали 2,3 -> свій таймер)
+  ledcAttachCompat(PAN_PIN,  PAN_CH,  SERVO_FREQ, SERVO_RES);
+  ledcAttachCompat(TILT_PIN, TILT_CH, SERVO_FREQ, SERVO_RES);
   applyLight();
   applyServo();
 
