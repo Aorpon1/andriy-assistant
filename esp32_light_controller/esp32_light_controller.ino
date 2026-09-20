@@ -54,9 +54,10 @@ const char* AP_PASS      = "12345678";   // пароль (мін. 8 символ
 const char* MDNS_NAME    = "fpvlight";   // адреса в локалці: http://fpvlight.local
 const int   WIFI_CHANNEL = 1;            // канал запасної точки
 
-const int   LED_PIN  = 25;               // GPIO25 -> IN1 DRV8871 (ШІМ яскравості)
-const int   PAN_PIN  = 26;               // GPIO26 -> серво PAN
-const int   TILT_PIN = 27;               // GPIO27 -> серво TILT
+const int   LED_PIN    = 25;             // GPIO25 -> IN1 DRV8871 (світло)
+const int   STATUS_LED = 2;              // вбудований синій LED плати — дублює стан лампи
+const int   PAN_PIN    = 26;             // GPIO26 -> серво PAN
+const int   TILT_PIN   = 27;             // GPIO27 -> серво TILT
 const bool  LED_INVERT = false;          // true, якщо світло горить "навпаки"
 
 // --- ШІМ світла (LEDC) ---
@@ -130,12 +131,15 @@ int brightnessToPWM(int percent) {   // лишено для JSON/діагнос�
 // (вкл/викл через digitalWrite). Плавна яскравість з такою фарою неможлива.
 void setupLight() {
   pinMode(LED_PIN, OUTPUT);
+  pinMode(STATUS_LED, OUTPUT);
   digitalWrite(LED_PIN, LED_INVERT ? HIGH : LOW);   // старт: вимкнено
+  digitalWrite(STATUS_LED, LOW);
 }
 
 void writeLight(bool on) {
-  bool level = LED_INVERT ? !on : on;      // рівень на піні
+  bool level = LED_INVERT ? !on : on;          // рівень на піні світла
   digitalWrite(LED_PIN, level ? HIGH : LOW);
+  digitalWrite(STATUS_LED, on ? HIGH : LOW);   // дублюємо стан на вбудований LED плати
 }
 
 void applyLight() {
