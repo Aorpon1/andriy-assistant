@@ -3,16 +3,17 @@
  *  ESP32 — контролер: WiFi веб-морда + (опц.) ESP-NOW + 2 серво + світло DRV8871
  * ============================================================================
  *
- *  ПЛАТА:  ESP32 (НЕ ESP8266!). Інші бібліотеки й API:
- *          - WiFi.h / WebServer.h (не ESP8266WiFi.h)
- *          - esp_now.h (інша сигнатура callback, ніж на ESP8266)
- *          - ESP32Servo.h (звичайна Servo.h на ESP32 НЕ працює!)
- *          - PWM через analogWrite (діапазон 0..255 за замовчуванням)
+ *  ПЛАТА:  ESP32 (НЕ ESP8266!).
+ *
+ *  ВАЖЛИВО: і світло, і серво керуються через ОДИН механізм — LEDC (апаратний
+ *  ШІМ ESP32). Бібліотека ESP32Servo НЕ використовується навмисно, бо вона
+ *  конфліктувала з ШІМ світла за апаратні канали/таймери (світло блимало,
+ *  не вимикалось). Тепер конфлікту немає — LEDC сам роздає канали.
  *
  *  РОЗКЛАДКА ПІНІВ (ESP32):
- *          GPIO25 -> IN1 драйвера DRV8871 (PWM яскравості світла)
- *          GPIO26 -> сигнал серво PAN  (поворот)
- *          GPIO27 -> сигнал серво TILT (нахил)
+ *          GPIO25 -> IN1 драйвера DRV8871 (ШІМ яскравості світла)  [LEDC кан.0]
+ *          GPIO26 -> сигнал серво PAN  (поворот)                    [LEDC кан.1]
+ *          GPIO27 -> сигнал серво TILT (нахил)                      [LEDC кан.2]
  *
  *  DRV8871 (світло):
  *          IN1 -> GPIO25 ; IN2 -> GND ; OUT1/OUT2 -> лампа ;
@@ -24,15 +25,11 @@
  *          - СПІЛЬНА ЗЕМЛЯ: GND ESP32 + GND драйвера + мінус 12В + мінус UBEC.
  *
  *  ============================================================================
- *  ПОТРІБНО ВСТАНОВИТИ ПЕРЕД КОМПІЛЯЦІЄЮ:
+ *  ПОТРІБНО ВСТАНОВИТИ:
  *   1) ESP32 core: Boards Manager -> "esp32 by Espressif Systems".
  *      Плата: Tools -> Board -> ESP32 Arduino -> "ESP32 Dev Module".
- *   2) Бібліотека ESP32Servo: Library Manager -> знайти "ESP32Servo"
- *      (автор Kevin Harrington) -> Install.
+ *   (Бібліотека ESP32Servo БІЛЬШЕ НЕ ПОТРІБНА.)
  *  ============================================================================
- *
- *  ESP-NOW (прийом команд від пульта) можна тимчасово вимкнути, якщо пульта
- *  ще немає: постав ENABLE_ESPNOW 0. Тоді керування лише з веб-морди.
  */
 
 #define ENABLE_ESPNOW 0        // 0 = тільки WiFi/веб (пульта ще нема); 1 = + ESP-NOW
@@ -40,7 +37,6 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
-#include <ESP32Servo.h>
 #if ENABLE_ESPNOW
   #include <esp_now.h>
 #endif
@@ -48,7 +44,7 @@
 // ----------------------------------------------------------------------------
 //  1) НАЛАШТУВАННЯ
 // ----------------------------------------------------------------------------
-// >>> ВПИШИ СВІЙ ДОМАШНІЙ WiFi (щоб заходити по локалці) <<<
+// >>> ТВІЙ ДОМАШНІЙ WiFi (щоб заходити по локалці) <<<
 const char* STA_SSID = "DDH 2.4";        // назва твоєї WiFi мережі (роутера)
 const char* STA_PASS = "044ddh22";       // пароль твоєї WiFi мережі
 
@@ -58,74 +54,80 @@ const char* AP_PASS      = "12345678";   // пароль (мін. 8 символ
 const char* MDNS_NAME    = "fpvlight";   // адреса в локалці: http://fpvlight.local
 const int   WIFI_CHANNEL = 1;            // канал запасної точки
 
-const int   LED_PIN  = 25;               // GPIO25 -> IN1 DRV8871 (PWM яскравості)
+const int   LED_PIN  = 25;               // GPIO25 -> IN1 DRV8871 (ШІМ яскравості)
 const int   PAN_PIN  = 26;               // GPIO26 -> серво PAN
 const int   TILT_PIN = 27;               // GPIO27 -> серво TILT
 const bool  LED_INVERT = false;          // true, якщо світло горить "навпаки"
 
+// --- ШІМ світла (LEDC) ---
+const int   LED_CH       = 0;            // LEDC-канал світла (для core 2.x)
 const int   PWM_MAX      = 255;          // діапазон ШІМ (8 біт)
-const int   LED_PWM_FREQ = 20000;        // частота ШІМ 20 кГц (проти блимання фари)
-const int   LED_PWM_RES  = 8;            // роздільність 8 біт -> 0..255
+const int   LED_PWM_FREQ = 20000;        // 20 кГц (проти блимання фари)
+const int   LED_PWM_RES  = 8;            // 8 біт -> 0..255
+
+// --- Серво через LEDC ---
+const int   PAN_CH       = 1;            // LEDC-канал серво PAN  (для core 2.x)
+const int   TILT_CH      = 2;            // LEDC-канал серво TILT (для core 2.x)
+const int   SERVO_FREQ   = 50;           // серво = 50 Гц (період 20 мс)
+const int   SERVO_RES    = 16;           // 16 біт -> точний кут
+const long  SERVO_PERIOD_US = 20000;     // 20 мс = 20000 мкс
 
 // ----------------------------------------------------------------------------
 //  2) ГЛОБАЛЬНИЙ СТАН (дефолт при старті)
 // ----------------------------------------------------------------------------
-bool ledOn      = false;   // світло за замовчуванням ВИМКНЕНЕ (керується з веб-морди)
+bool ledOn      = false;   // світло за замовчуванням ВИМКНЕНЕ
 int  brightness = 60;      // стартова яскравість 60%
 bool strobeOn   = false;   // строб вимкнений
 int  strobeHz   = 8;       // швидкість строба 1..20 Гц
-int  panAngle   = 90;      // серво pan  0..180 (90 = центр)
-int  tiltAngle  = 90;      // серво tilt 0..180 (90 = центр)
+int  panAngle   = 90;      // серво pan  0..180
+int  tiltAngle  = 90;      // серво tilt 0..180
 
 unsigned long lastStrobeToggle = 0;
 bool          strobePhaseOn    = false;
 
-Servo servoPan;
-Servo servoTilt;
 WebServer server(80);
 
 // ----------------------------------------------------------------------------
-//  3) ФОРМАТ ПАКЕТА ESP-NOW (має ТОЧНО збігатися зі структурою в пульті!)
+//  3) ПАКЕТ ESP-NOW
 // ----------------------------------------------------------------------------
 typedef struct __attribute__((packed)) {
-  uint8_t pan;        // 0..180
-  uint8_t tilt;       // 0..180
-  uint8_t brightness; // 0..100
-  uint8_t on;         // 0/1
-  uint8_t strobe;     // 0/1
-} LightPacket;        // 5 байт
+  uint8_t pan; uint8_t tilt; uint8_t brightness; uint8_t on; uint8_t strobe;
+} LightPacket;
 
 volatile bool newPacket = false;
 LightPacket   rxPacket;
+
+// ----------------------------------------------------------------------------
+//  LEDC — сумісні обгортки (core 3.x пише по піну, 2.x по каналу)
+// ----------------------------------------------------------------------------
+void ledcAttachCompat(int pin, int ch, int freq, int res) {
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  (void)ch; ledcAttach(pin, freq, res);
+#else
+  ledcSetup(ch, freq, res); ledcAttachPin(pin, ch);
+#endif
+}
+void ledcWriteCompat(int pin, int ch, uint32_t duty) {
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  (void)ch; ledcWrite(pin, duty);
+#else
+  (void)pin; ledcWrite(ch, duty);
+#endif
+}
 
 // ----------------------------------------------------------------------------
 //  СВІТЛО
 // ----------------------------------------------------------------------------
 int brightnessToPWM(int percent) {
   percent = constrain(percent, 0, 100);
-  return map(percent, 0, 100, 0, PWM_MAX);   // 0..100%  ->  0..255
-}
-
-// Налаштування ШІМ світла через сирий LEDC (той самий, що в робочому тесті).
-// Викликається ПЕРШИМ у setup -> займає апаратний таймер 0.
-void setupLightPwm() {
-#if ESP_ARDUINO_VERSION_MAJOR >= 3
-  ledcAttach(LED_PIN, LED_PWM_FREQ, LED_PWM_RES);
-#else
-  ledcSetup(0, LED_PWM_FREQ, LED_PWM_RES);
-  ledcAttachPin(LED_PIN, 0);
-#endif
+  return map(percent, 0, 100, 0, PWM_MAX);   // 0..100% -> 0..255
 }
 
 int lastPwmWritten = -1;
 void writePWM(int pwm) {
   if (LED_INVERT) pwm = PWM_MAX - pwm;
   if (pwm != lastPwmWritten) {
-#if ESP_ARDUINO_VERSION_MAJOR >= 3
-    ledcWrite(LED_PIN, pwm);         // core 3.x: по піну
-#else
-    ledcWrite(0, pwm);               // core 2.x: по каналу 0
-#endif
+    ledcWriteCompat(LED_PIN, LED_CH, pwm);
     lastPwmWritten = pwm;
   }
 }
@@ -143,19 +145,26 @@ void applyLight() {
 }
 
 // ----------------------------------------------------------------------------
-//  СЕРВО (пишемо тільки при зміні кута, щоб не тремтіли)
+//  СЕРВО (через LEDC: кут -> ширина імпульсу -> duty)
 // ----------------------------------------------------------------------------
+uint32_t angleToDuty(int angle) {
+  angle = constrain(angle, 0, 180);
+  long us = map(angle, 0, 180, 500, 2500);        // ширина імпульсу 500..2500 мкс
+  long maxDuty = (1L << SERVO_RES) - 1;           // 65535 для 16 біт
+  return (uint32_t)(us * maxDuty / SERVO_PERIOD_US);
+}
+
 int lastPanWritten  = -1;
 int lastTiltWritten = -1;
 void applyServo() {
   int p = constrain(panAngle, 0, 180);
   int t = constrain(tiltAngle, 0, 180);
-  if (p != lastPanWritten)  { servoPan.write(p);   lastPanWritten  = p; }
-  if (t != lastTiltWritten) { servoTilt.write(t);  lastTiltWritten = t; }
+  if (p != lastPanWritten)  { ledcWriteCompat(PAN_PIN,  PAN_CH,  angleToDuty(p)); lastPanWritten  = p; }
+  if (t != lastTiltWritten) { ledcWriteCompat(TILT_PIN, TILT_CH, angleToDuty(t)); lastTiltWritten = t; }
 }
 
 // ----------------------------------------------------------------------------
-//  ДІАГНОСТИКА В SERIAL
+//  ДІАГНОСТИКА
 // ----------------------------------------------------------------------------
 void printState(const char* src) {
   Serial.print("["); Serial.print(src); Serial.print("] ");
@@ -168,7 +177,7 @@ void printState(const char* src) {
 }
 
 // ----------------------------------------------------------------------------
-//  ESP-NOW callback (сигнатура відрізняється між ESP32 core 2.x і 3.x!)
+//  ESP-NOW
 // ----------------------------------------------------------------------------
 #if ENABLE_ESPNOW
   #if ESP_ARDUINO_VERSION_MAJOR >= 3
@@ -336,23 +345,16 @@ void handleNotFound() { server.send(404, "text/plain", "Not found"); }
 void setup() {
   Serial.begin(115200);
   Serial.println();
-  Serial.println("=== ESP32 Light Controller ===");
+  Serial.println("=== ESP32 Light Controller (LEDC) ===");
 
-  // Світло ПЕРШИМ -> займає апаратний таймер 0
-  setupLightPwm();
+  // Усе через LEDC: світло (кан.0), серво PAN (кан.1), серво TILT (кан.2)
+  ledcAttachCompat(LED_PIN,  LED_CH,  LED_PWM_FREQ, LED_PWM_RES);
+  ledcAttachCompat(PAN_PIN,  PAN_CH,  SERVO_FREQ,   SERVO_RES);
+  ledcAttachCompat(TILT_PIN, TILT_CH, SERVO_FREQ,   SERVO_RES);
   applyLight();
-
-  // Серво на таймерах 1..3 (НЕ чіпаємо таймер 0, де світло) -> без конфлікту
-  ESP32PWM::allocateTimer(1);
-  ESP32PWM::allocateTimer(2);
-  ESP32PWM::allocateTimer(3);
-  servoPan.setPeriodHertz(50);
-  servoTilt.setPeriodHertz(50);
-  servoPan.attach(PAN_PIN, 500, 2500);
-  servoTilt.attach(TILT_PIN, 500, 2500);
   applyServo();
 
-  // 1) Пробуємо підключитись до домашнього WiFi (режим STA) — щоб заходити по локалці
+  // WiFi: пробуємо домашній (STA), інакше піднімаємо свою точку
   WiFi.mode(WIFI_STA);
   WiFi.begin(STA_SSID, STA_PASS);
   Serial.print("Підключення до WiFi \""); Serial.print(STA_SSID); Serial.print("\" ");
@@ -363,12 +365,10 @@ void setup() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    // Підключились до домашнього WiFi
     Serial.println(" OK");
     Serial.print(">>> ЗАХОДЬ ПО ЛОКАЛЦІ: http://");
     Serial.println(WiFi.localIP());
   } else {
-    // Не вдалось -> піднімаємо власну запасну точку доступу
     Serial.println(" не вдалось.");
     WiFi.mode(WIFI_AP);
     if (strlen(AP_PASS) >= 8) WiFi.softAP(AP_SSID, AP_PASS, WIFI_CHANNEL);
@@ -377,11 +377,8 @@ void setup() {
     Serial.print("\", заходь: http://"); Serial.println(WiFi.softAPIP());
   }
 
-  // mDNS: коротка адреса замість цифр IP (працює в тій самій локалці)
   if (MDNS.begin(MDNS_NAME)) {
-    Serial.print(">>> Або за адресою: http://");
-    Serial.print(MDNS_NAME);
-    Serial.println(".local");
+    Serial.print(">>> Або: http://"); Serial.print(MDNS_NAME); Serial.println(".local");
   }
 
 #if ENABLE_ESPNOW
@@ -398,7 +395,7 @@ void setup() {
   server.on("/set",   handleSet);
   server.onNotFound(handleNotFound);
   server.begin();
-  Serial.println("Веб-сервер: http://192.168.4.1");
+  Serial.println("Веб-сервер запущено.");
 }
 
 // ----------------------------------------------------------------------------
