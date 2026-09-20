@@ -171,6 +171,17 @@ void onEspNowRecv(uint8_t *mac, uint8_t *data, uint8_t len) {
   newPacket = true;                          // обробимо в loop() (не в callback!)
 }
 
+// Друкує поточний стан у Serial Monitor — для діагностики
+void printState(const char* src) {
+  Serial.print(F("[")); Serial.print(src); Serial.print(F("] "));
+  Serial.print(F("light="));  Serial.print(ledOn ? F("ON") : F("OFF"));
+  Serial.print(F(" bright=")); Serial.print(brightness);
+  Serial.print(F(" pwm="));    Serial.print(brightnessToPWM(brightness));
+  Serial.print(F(" strobe=")); Serial.print(strobeOn ? 1 : 0);
+  Serial.print(F(" pan="));    Serial.print(panAngle);
+  Serial.print(F(" tilt="));   Serial.println(tiltAngle);
+}
+
 // Застосовує щойно прийнятий пакет до глобального стану
 void handlePacketIfAny() {
   if (!newPacket) return;
@@ -180,6 +191,7 @@ void handlePacketIfAny() {
   brightness = constrain(rxPacket.brightness, 0, 100);
   ledOn      = (rxPacket.on == 1);
   strobeOn   = (rxPacket.strobe == 1);
+  printState("ESP-NOW");
 }
 
 // ----------------------------------------------------------------------------
@@ -329,6 +341,7 @@ void handleSet() {
   if (server.hasArg("tilt"))   tiltAngle  = constrain(server.arg("tilt").toInt(), 0, 180);
   applyLight();
   applyServo();
+  printState("WEB");
   server.send(200, "application/json", stateJson());
 }
 
