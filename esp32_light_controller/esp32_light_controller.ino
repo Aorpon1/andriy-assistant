@@ -62,7 +62,7 @@ const bool  LED_INVERT = false;          // true, якщо світло гори
 // --- ШІМ світла (LEDC) ---
 const int   LED_CH       = 0;            // LEDC-канал світла (для core 2.x)
 const int   PWM_MAX      = 255;          // діапазон ШІМ (8 біт)
-const int   LED_PWM_FREQ = 20000;        // 20 кГц (проти блимання фари)
+const int   LED_PWM_FREQ = 1000;         // 1 кГц (на цій частоті DRV8871+фара працюють)
 const int   LED_PWM_RES  = 8;            // 8 біт -> 0..255
 
 // --- Серво через LEDC ---
