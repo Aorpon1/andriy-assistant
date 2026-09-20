@@ -11,12 +11,13 @@
  *  не вимикалось). Тепер конфлікту немає — LEDC сам роздає канали.
  *
  *  РОЗКЛАДКА ПІНІВ (ESP32):
- *          GPIO25 -> IN1 драйвера DRV8871 (ШІМ яскравості світла)  [LEDC кан.0]
- *          GPIO26 -> сигнал серво PAN  (поворот)                    [LEDC кан.1]
- *          GPIO27 -> сигнал серво TILT (нахил)                      [LEDC кан.2]
+ *          GPIO32 -> IN1 драйвера DRV8871 (вкл/викл світла, digitalWrite)
+ *          GPIO26 -> сигнал серво PAN  (поворот)                    [LEDC кан.2]
+ *          GPIO27 -> сигнал серво TILT (нахил)                      [LEDC кан.3]
+ *          (GPIO25 не використовуємо — це DAC-пін, конфліктував.)
  *
  *  DRV8871 (світло):
- *          IN1 -> GPIO25 ; IN2 -> GND ; OUT1/OUT2 -> лампа ;
+ *          IN1 -> GPIO32 ; IN2 -> GND ; OUT1/OUT2 -> лампа ;
  *          VM(POWER+) -> 12В ; POWER- -> GND
  *
  *  ЖИВЛЕННЯ:
@@ -54,7 +55,7 @@ const char* AP_PASS      = "12345678";   // пароль (мін. 8 символ
 const char* MDNS_NAME    = "fpvlight";   // адреса в локалці: http://fpvlight.local
 const int   WIFI_CHANNEL = 1;            // канал запасної точки
 
-const int   LED_PIN    = 25;             // GPIO25 -> IN1 DRV8871 (світло)
+const int   LED_PIN    = 32;             // GPIO32 -> IN1 DRV8871 (світло). GPIO25 (DAC) конфліктував.
 const int   STATUS_LED = 2;              // вбудований синій LED плати — дублює стан лампи
 const int   PAN_PIN    = 26;             // GPIO26 -> серво PAN
 const int   TILT_PIN   = 27;             // GPIO27 -> серво TILT
