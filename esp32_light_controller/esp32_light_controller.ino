@@ -66,8 +66,10 @@ const int   LED_PWM_FREQ = 1000;         // 1 кГц (на цій частоті
 const int   LED_PWM_RES  = 8;            // 8 біт -> 0..255
 
 // --- Серво через LEDC ---
-const int   PAN_CH       = 1;            // LEDC-канал серво PAN  (для core 2.x)
-const int   TILT_CH      = 2;            // LEDC-канал серво TILT (для core 2.x)
+// Канали 2 і 3 -> таймер 1 (окремий від світла на каналі 0 / таймері 0).
+// Це критично: інакше серво переналаштовує таймер світла й ламає ШІМ лампи.
+const int   PAN_CH       = 2;            // LEDC-канал серво PAN
+const int   TILT_CH      = 3;            // LEDC-канал серво TILT
 const int   SERVO_FREQ   = 50;           // серво = 50 Гц (період 20 мс)
 const int   SERVO_RES    = 16;           // 16 біт -> точний кут
 const long  SERVO_PERIOD_US = 20000;     // 20 мс = 20000 мкс
@@ -102,14 +104,15 @@ LightPacket   rxPacket;
 // ----------------------------------------------------------------------------
 void ledcAttachCompat(int pin, int ch, int freq, int res) {
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
-  (void)ch; ledcAttach(pin, freq, res);
+  // Явно закріплюємо КОНКРЕТНИЙ канал (щоб контролювати, який таймер займає пін)
+  ledcAttachChannel(pin, freq, res, ch);
 #else
   ledcSetup(ch, freq, res); ledcAttachPin(pin, ch);
 #endif
 }
 void ledcWriteCompat(int pin, int ch, uint32_t duty) {
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
-  (void)ch; ledcWrite(pin, duty);
+  ledcWriteChannel(ch, duty);      // пишемо саме в закріплений канал
 #else
   (void)pin; ledcWrite(ch, duty);
 #endif
