@@ -35,10 +35,11 @@
  *  ще немає: постав ENABLE_ESPNOW 0. Тоді керування лише з веб-морди.
  */
 
-#define ENABLE_ESPNOW 1        // 1 = прийом ESP-NOW увімкнено; 0 = тільки веб-морда
+#define ENABLE_ESPNOW 0        // 0 = тільки WiFi/веб (пульта ще нема); 1 = + ESP-NOW
 
 #include <WiFi.h>
 #include <WebServer.h>
+#include <ESPmDNS.h>
 #include <ESP32Servo.h>
 #if ENABLE_ESPNOW
   #include <esp_now.h>
@@ -47,9 +48,15 @@
 // ----------------------------------------------------------------------------
 //  1) НАЛАШТУВАННЯ
 // ----------------------------------------------------------------------------
-const char* AP_SSID      = "FPV-Light";  // назва WiFi мережі
-const char* AP_PASS      = "12345678";   // пароль (мін. 8 символів; "" = без пароля)
-const int   WIFI_CHANNEL = 1;            // КАНАЛ (пульт ESP32 має слати на цьому ж)
+// >>> ВПИШИ СВІЙ ДОМАШНІЙ WiFi (щоб заходити по локалці) <<<
+const char* STA_SSID = "ТВІЙ_WIFI";      // назва твоєї WiFi мережі (роутера)
+const char* STA_PASS = "ТВІЙ_ПАРОЛЬ";    // пароль твоєї WiFi мережі
+
+// Запасна власна точка доступу (підніметься, якщо до домашнього WiFi не вдалось)
+const char* AP_SSID      = "FPV-Light";  // назва запасної мережі
+const char* AP_PASS      = "12345678";   // пароль (мін. 8 символів)
+const char* MDNS_NAME    = "fpvlight";   // адреса в локалці: http://fpvlight.local
+const int   WIFI_CHANNEL = 1;            // канал запасної точки
 
 const int   LED_PIN  = 25;               // GPIO25 -> IN1 DRV8871 (PWM яскравості)
 const int   PAN_PIN  = 26;               // GPIO26 -> серво PAN
@@ -57,7 +64,7 @@ const int   TILT_PIN = 27;               // GPIO27 -> серво TILT
 const bool  LED_INVERT = false;          // true, якщо світло горить "навпаки"
 
 const int   PWM_MAX      = 255;          // діапазон ШІМ (8 біт)
-const int   LED_PWM_FREQ = 1000;         // частота ШІМ 1 кГц
+const int   LED_PWM_FREQ = 20000;        // частота ШІМ 20 кГц (проти блимання фари)
 const int   LED_PWM_RES  = 8;            // роздільність 8 біт -> 0..255
 
 // ----------------------------------------------------------------------------
@@ -340,20 +347,37 @@ void setup() {
   servoTilt.attach(TILT_PIN, 500, 2500);
   applyServo();
 
-  // WiFi точка доступу на фіксованому каналі
-  WiFi.mode(WIFI_AP);
-  bool ok;
-  if (strlen(AP_PASS) >= 8)
-    ok = WiFi.softAP(AP_SSID, AP_PASS, WIFI_CHANNEL);
-  else
-    ok = WiFi.softAP(AP_SSID, NULL, WIFI_CHANNEL);
+  // 1) Пробуємо підключитись до домашнього WiFi (режим STA) — щоб заходити по локалці
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(STA_SSID, STA_PASS);
+  Serial.print("Підключення до WiFi \""); Serial.print(STA_SSID); Serial.print("\" ");
+  unsigned long t0 = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - t0 < 10000) {
+    delay(300);
+    Serial.print(".");
+  }
 
-  Serial.print("AP: ");        Serial.println(ok ? "OK" : "FAIL");
-  Serial.print("SSID: ");      Serial.println(AP_SSID);
-  Serial.print("Канал: ");     Serial.println(WIFI_CHANNEL);
-  Serial.print("IP: ");        Serial.println(WiFi.softAPIP());  // 192.168.4.1
-  Serial.print(">>> MAC цієї плати (для пульта): ");
-  Serial.println(WiFi.softAPmacAddress());
+  if (WiFi.status() == WL_CONNECTED) {
+    // Підключились до домашнього WiFi
+    Serial.println(" OK");
+    Serial.print(">>> ЗАХОДЬ ПО ЛОКАЛЦІ: http://");
+    Serial.println(WiFi.localIP());
+  } else {
+    // Не вдалось -> піднімаємо власну запасну точку доступу
+    Serial.println(" не вдалось.");
+    WiFi.mode(WIFI_AP);
+    if (strlen(AP_PASS) >= 8) WiFi.softAP(AP_SSID, AP_PASS, WIFI_CHANNEL);
+    else                      WiFi.softAP(AP_SSID, NULL, WIFI_CHANNEL);
+    Serial.print(">>> Запасна точка \""); Serial.print(AP_SSID);
+    Serial.print("\", заходь: http://"); Serial.println(WiFi.softAPIP());
+  }
+
+  // mDNS: коротка адреса замість цифр IP (працює в тій самій локалці)
+  if (MDNS.begin(MDNS_NAME)) {
+    Serial.print(">>> Або за адресою: http://");
+    Serial.print(MDNS_NAME);
+    Serial.println(".local");
+  }
 
 #if ENABLE_ESPNOW
   if (esp_now_init() == ESP_OK) {
