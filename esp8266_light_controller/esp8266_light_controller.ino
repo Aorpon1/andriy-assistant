@@ -114,9 +114,13 @@ int brightnessToPWM(int percent) {
   return map(percent, 0, 100, 0, 1023);   // 0..100%  ->  0..1023 (діапазон ESP8266)
 }
 
+int lastPwmWritten = -1;   // останнє записане значення (щоб не смикати пін дарма)
 void writePWM(int pwm) {
   if (LED_INVERT) pwm = 1023 - pwm;
-  analogWrite(LED_PIN, pwm);
+  if (pwm != lastPwmWritten) {      // пишемо, ТІЛЬКИ якщо значення змінилось
+    analogWrite(LED_PIN, pwm);
+    lastPwmWritten = pwm;
+  }
 }
 
 // Керує світлом за поточним станом — викликається в loop()
@@ -140,10 +144,15 @@ void applyLight() {
   writePWM(strobePhaseOn ? brightnessToPWM(brightness) : 0);
 }
 
-// Пише поточні кути на серво
+// Пише поточні кути на серво — ТІЛЬКИ коли кут реально змінився.
+// (Постійний write() у loop() на ESP8266 змушує серво тремтіти й застрягати.)
+int lastPanWritten  = -1;
+int lastTiltWritten = -1;
 void applyServo() {
-  servoPan.write(constrain(panAngle, 0, 180));
-  servoTilt.write(constrain(tiltAngle, 0, 180));
+  int p = constrain(panAngle, 0, 180);
+  int t = constrain(tiltAngle, 0, 180);
+  if (p != lastPanWritten)  { servoPan.write(p);   lastPanWritten  = p; }
+  if (t != lastTiltWritten) { servoTilt.write(t);  lastTiltWritten = t; }
 }
 
 // ----------------------------------------------------------------------------
@@ -334,9 +343,10 @@ void setup() {
   analogWriteFreq(1000);
   writePWM(0);
 
-  // Серво: підключаємо і ставимо в центр
-  servoPan.attach(PAN_PIN);
-  servoTilt.attach(TILT_PIN);
+  // Серво: підключаємо з широким діапазоном імпульсів 500..2500 мкс
+  // (дає повний хід 0..180 навіть дешевим SG90/MG90).
+  servoPan.attach(PAN_PIN, 500, 2500);
+  servoTilt.attach(TILT_PIN, 500, 2500);
   applyServo();
 
   // WiFi точка доступу на ФІКСОВАНОМУ каналі (важливо для ESP-NOW!)
