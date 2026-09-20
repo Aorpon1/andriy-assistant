@@ -133,13 +133,9 @@ void setupLight() {
   digitalWrite(LED_PIN, LED_INVERT ? HIGH : LOW);   // старт: вимкнено
 }
 
-int lastLightState = -1;
 void writeLight(bool on) {
-  int v = on ? 1 : 0;
-  if (v != lastLightState) {
-    digitalWrite(LED_PIN, (LED_INVERT ? !on : on) ? HIGH : LOW);
-    lastLightState = v;
-  }
+  bool level = LED_INVERT ? !on : on;      // рівень на піні
+  digitalWrite(LED_PIN, level ? HIGH : LOW);
 }
 
 void applyLight() {
