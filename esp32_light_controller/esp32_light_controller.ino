@@ -82,7 +82,6 @@ bool          strobePhaseOn    = false;
 
 Servo servoPan;
 Servo servoTilt;
-ESP32PWM lightPwm;         // ШІМ світла через ESP32PWM (з тієї ж бібліотеки, що серво)
 WebServer server(80);
 
 // ----------------------------------------------------------------------------
@@ -107,16 +106,26 @@ int brightnessToPWM(int percent) {
   return map(percent, 0, 100, 0, PWM_MAX);   // 0..100%  ->  0..255
 }
 
-// Налаштування ШІМ світла через ESP32PWM (координується з серво -> без конфліктів)
+// Налаштування ШІМ світла через сирий LEDC (той самий, що в робочому тесті).
+// Викликається ПЕРШИМ у setup -> займає апаратний таймер 0.
 void setupLightPwm() {
-  lightPwm.attachPin(LED_PIN, LED_PWM_FREQ, LED_PWM_RES);
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  ledcAttach(LED_PIN, LED_PWM_FREQ, LED_PWM_RES);
+#else
+  ledcSetup(0, LED_PWM_FREQ, LED_PWM_RES);
+  ledcAttachPin(LED_PIN, 0);
+#endif
 }
 
 int lastPwmWritten = -1;
 void writePWM(int pwm) {
   if (LED_INVERT) pwm = PWM_MAX - pwm;
   if (pwm != lastPwmWritten) {
-    lightPwm.write(pwm);              // duty 0..255 (8 біт)
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+    ledcWrite(LED_PIN, pwm);         // core 3.x: по піну
+#else
+    ledcWrite(0, pwm);               // core 2.x: по каналу 0
+#endif
     lastPwmWritten = pwm;
   }
 }
@@ -329,18 +338,14 @@ void setup() {
   Serial.println();
   Serial.println("=== ESP32 Light Controller ===");
 
-  // Резервуємо всі 4 таймери ESP32PWM ДО налаштування світла й серво,
-  // щоб бібліотека сама розподілила ресурси (світло і серво не конфліктують).
-  ESP32PWM::allocateTimer(0);
-  ESP32PWM::allocateTimer(1);
-  ESP32PWM::allocateTimer(2);
-  ESP32PWM::allocateTimer(3);
-
-  // Світло через ESP32PWM
+  // Світло ПЕРШИМ -> займає апаратний таймер 0
   setupLightPwm();
   applyLight();
 
-  // Серво
+  // Серво на таймерах 1..3 (НЕ чіпаємо таймер 0, де світло) -> без конфлікту
+  ESP32PWM::allocateTimer(1);
+  ESP32PWM::allocateTimer(2);
+  ESP32PWM::allocateTimer(3);
   servoPan.setPeriodHertz(50);
   servoTilt.setPeriodHertz(50);
   servoPan.attach(PAN_PIN, 500, 2500);
