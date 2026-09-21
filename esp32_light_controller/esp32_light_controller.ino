@@ -171,8 +171,8 @@ uint32_t angleToDuty(int angle) {
 float curPan  = 90;
 float curTilt = 90;
 unsigned long lastServoStep = 0;
-const int   SERVO_STEP_MS = 15;    // як часто оновлювати (мс)
-const float SERVO_SPEED   = 2.5;   // градусів за крок (більше = різкіше, менше = плавніше)
+const int   SERVO_STEP_MS = 10;    // як часто оновлювати (мс)
+const float SERVO_SPEED   = 5.0;   // градусів за крок (більше = різкіше/швидше, менше = плавніше)
 
 void applyServo() {
   if (millis() - lastServoStep < SERVO_STEP_MS) return;
@@ -332,11 +332,11 @@ String buildPage() {
     "    document.getElementById('pval').textContent=p;"
     "    document.getElementById('tval').textContent=t;"
     "    var now=Date.now();"
-    "    if(now-lastSend>=50){lastSend=now;send('pan='+p+'&tilt='+t);}"
+    "    if(now-lastSend>=40){lastSend=now;fetch('/set?pan='+p+'&tilt='+t).catch(function(){});}"
     "  }"
     "  joy.addEventListener('pointerdown',function(e){act=true;dragging=true;joy.setPointerCapture(e.pointerId);calc(e.clientX,e.clientY);});"
     "  joy.addEventListener('pointermove',function(e){if(act)calc(e.clientX,e.clientY);});"
-    "  function endDrag(){if(act){act=false;dragging=false;send('pan='+pp+'&tilt='+pt);}}"
+    "  function endDrag(){if(act){act=false;dragging=false;fetch('/set?pan='+pp+'&tilt='+pt).catch(function(){});}}"
     "  joy.addEventListener('pointerup',endDrag);"
     "  joy.addEventListener('pointercancel',endDrag);"
     "  window.__joyFrom=fromAng;window.__joyAct=function(){return act;};"
@@ -360,7 +360,7 @@ String buildPage() {
     "function togglePower(){send('on='+(on?0:1));}"
     "function toggleStrobe(){send('strobe='+(strobe?0:1));}"
     "fetch('/state').then(r=>r.json()).then(apply);"
-    "setInterval(()=>{fetch('/state').then(r=>r.json()).then(apply);},400);"
+    "setInterval(()=>{if(!dragging)fetch('/state').then(r=>r.json()).then(apply);},600);"
     "</script>"
     "</body></html>"
   );
