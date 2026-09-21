@@ -57,8 +57,8 @@ const int   WIFI_CHANNEL = 1;            // канал запасної точк
 
 const int   LED_PIN    = 32;             // GPIO32 -> IN1 DRV8871 (світло). GPIO25 (DAC) конфліктував.
 const int   STATUS_LED = 2;              // вбудований синій LED плати — дублює стан лампи
-const int   PAN_PIN    = 26;             // GPIO26 -> серво PAN
-const int   TILT_PIN   = 27;             // GPIO27 -> серво TILT
+const int   PAN_PIN    = 27;             // GPIO27 -> серво PAN (помінялись місцями)
+const int   TILT_PIN   = 26;             // GPIO26 -> серво TILT
 const bool  LED_INVERT = false;          // true, якщо світло горить "навпаки"
 
 // --- ШІМ світла (LEDC) ---
