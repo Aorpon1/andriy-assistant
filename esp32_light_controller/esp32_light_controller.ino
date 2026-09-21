@@ -166,13 +166,29 @@ uint32_t angleToDuty(int angle) {
   return (uint32_t)(us * maxDuty / SERVO_PERIOD_US);
 }
 
-int lastPanWritten  = -1;
-int lastTiltWritten = -1;
+// Плавний рух: curPan/curTilt (реальна позиція) поступово доганяють
+// panAngle/tiltAngle (ціль з веб/пульта). Дає плавні, але чіткі рухи.
+float curPan  = 90;
+float curTilt = 90;
+unsigned long lastServoStep = 0;
+const int   SERVO_STEP_MS = 15;    // як часто оновлювати (мс)
+const float SERVO_SPEED   = 2.5;   // градусів за крок (більше = різкіше, менше = плавніше)
+
 void applyServo() {
-  int p = constrain(panAngle, 0, 180);
-  int t = constrain(tiltAngle, 0, 180);
-  if (p != lastPanWritten)  { ledcWriteCompat(PAN_PIN,  PAN_CH,  angleToDuty(p)); lastPanWritten  = p; }
-  if (t != lastTiltWritten) { ledcWriteCompat(TILT_PIN, TILT_CH, angleToDuty(t)); lastTiltWritten = t; }
+  if (millis() - lastServoStep < SERVO_STEP_MS) return;
+  lastServoStep = millis();
+
+  float tp = constrain(panAngle, 0, 180);
+  float tt = constrain(tiltAngle, 0, 180);
+
+  // рухаємо curPan до цілі не швидше SERVO_SPEED за крок
+  if      (curPan < tp) curPan = min(tp, curPan + SERVO_SPEED);
+  else if (curPan > tp) curPan = max(tp, curPan - SERVO_SPEED);
+  if      (curTilt < tt) curTilt = min(tt, curTilt + SERVO_SPEED);
+  else if (curTilt > tt) curTilt = max(tt, curTilt - SERVO_SPEED);
+
+  ledcWriteCompat(PAN_PIN,  PAN_CH,  angleToDuty((int)curPan));
+  ledcWriteCompat(TILT_PIN, TILT_CH, angleToDuty((int)curTilt));
 }
 
 // ----------------------------------------------------------------------------
@@ -249,6 +265,14 @@ String buildPage() {
     ".sec{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#7c6f99;"
     "margin:26px 0 14px;border-top:1px solid rgba(167,139,250,.12);padding-top:18px}"
     ".hint{font-size:12px;color:#7c6f99;text-align:center;margin-top:8px}"
+    ".joy{width:240px;height:240px;margin:6px auto 0;border-radius:28px;position:relative;"
+    "background:radial-gradient(circle at 50% 50%,rgba(167,139,250,.14),rgba(167,139,250,.05));"
+    "border:1px solid rgba(167,139,250,.28);touch-action:none;overflow:hidden}"
+    ".joy .cx,.joy .cy{position:absolute;background:rgba(167,139,250,.20)}"
+    ".joy .cx{left:0;right:0;top:50%;height:1px}.joy .cy{top:0;bottom:0;left:50%;width:1px}"
+    ".knob{width:72px;height:72px;border-radius:50%;position:absolute;left:84px;top:84px;"
+    "background:radial-gradient(circle at 35% 30%,#c4b5fd,#7c3aed);"
+    "box-shadow:0 6px 18px rgba(124,58,237,.55);touch-action:none;transition:left .04s,top .04s}"
     "</style></head><body>"
     "<div class='card'>"
     "<h1>FPV Light</h1>"
@@ -267,16 +291,16 @@ String buildPage() {
     "<label>Швидкість строба <span class='val'><span id='sval'>8</span> Гц</span></label>"
     "<input type='range' id='speed' min='1' max='20' value='8'>"
     "</div>"
-    "<div class='sec'>Серво (підвіс)</div>"
-    "<div class='row'>"
-    "<label>Поворот (PAN) <span class='val'><span id='pval'>90</span>&deg;</span></label>"
-    "<input type='range' id='pan' min='0' max='180' value='90'>"
+    "<div class='sec'>Підвіс — джойстик</div>"
+    "<div class='row' style='text-align:center'>"
+    "<span style='color:#cbb9ff;font-size:14px'>PAN <b id='pval' style='color:#fff'>90</b>&deg;"
+    " &nbsp;&nbsp; TILT <b id='tval' style='color:#fff'>90</b>&deg;</span>"
     "</div>"
-    "<div class='row'>"
-    "<label>Нахил (TILT) <span class='val'><span id='tval'>90</span>&deg;</span></label>"
-    "<input type='range' id='tilt' min='0' max='180' value='90'>"
+    "<div class='joy' id='joy'>"
+    "<div class='cx'></div><div class='cy'></div>"
+    "<div class='knob' id='knob'></div>"
     "</div>"
-    "<div class='hint'>Стан синхронізується з пультом</div>"
+    "<div class='hint'>Веди пальцем — куди ручка, туди підвіс. Відпустиш — тримає позицію.</div>"
     "</div>"
     "<script>"
     "let on=false, strobe=false, dragging=false;"
@@ -292,10 +316,32 @@ String buildPage() {
     "B.oninput=()=>{document.getElementById('bval').textContent=B.value;send('bright='+B.value);};"
     "let S=document.getElementById('speed');"
     "S.oninput=()=>{document.getElementById('sval').textContent=S.value;send('hz='+S.value);};"
-    "let P=document.getElementById('pan');"
-    "P.oninput=()=>{document.getElementById('pval').textContent=P.value;send('pan='+P.value);};"
-    "let T=document.getElementById('tilt');"
-    "T.oninput=()=>{document.getElementById('tval').textContent=T.value;send('tilt='+T.value);};"
+    "(function(){"
+    "  var joy=document.getElementById('joy'),knob=document.getElementById('knob');"
+    "  var SZ=joy.clientWidth||240,KN=knob.offsetWidth||72,span=SZ-KN;"
+    "  var lastSend=0,pp=90,pt=90,act=false;"
+    "  function place(x,y){knob.style.left=x+'px';knob.style.top=y+'px';}"
+    "  function fromAng(p,t){place((p/180)*span,((180-t)/180)*span);}"
+    "  function calc(cx,cy){"
+    "    var r=joy.getBoundingClientRect();"
+    "    var x=cx-r.left-KN/2,y=cy-r.top-KN/2;"
+    "    x=Math.max(0,Math.min(span,x));y=Math.max(0,Math.min(span,y));"
+    "    place(x,y);"
+    "    var p=Math.round((x/span)*180),t=Math.round(180-(y/span)*180);"
+    "    pp=p;pt=t;"
+    "    document.getElementById('pval').textContent=p;"
+    "    document.getElementById('tval').textContent=t;"
+    "    var now=Date.now();"
+    "    if(now-lastSend>=50){lastSend=now;send('pan='+p+'&tilt='+t);}"
+    "  }"
+    "  joy.addEventListener('pointerdown',function(e){act=true;dragging=true;joy.setPointerCapture(e.pointerId);calc(e.clientX,e.clientY);});"
+    "  joy.addEventListener('pointermove',function(e){if(act)calc(e.clientX,e.clientY);});"
+    "  function endDrag(){if(act){act=false;dragging=false;send('pan='+pp+'&tilt='+pt);}}"
+    "  joy.addEventListener('pointerup',endDrag);"
+    "  joy.addEventListener('pointercancel',endDrag);"
+    "  window.__joyFrom=fromAng;window.__joyAct=function(){return act;};"
+    "  fromAng(90,90);"
+    "})();"
     "function apply(s){"
     "  on=s.on; strobe=s.strobe;"
     "  let p=document.getElementById('power');"
@@ -306,8 +352,9 @@ String buildPage() {
     "  if(!dragging){"
     "    B.value=s.bright; document.getElementById('bval').textContent=s.bright;"
     "    S.value=s.hz;     document.getElementById('sval').textContent=s.hz;"
-    "    P.value=s.pan;    document.getElementById('pval').textContent=s.pan;"
-    "    T.value=s.tilt;   document.getElementById('tval').textContent=s.tilt;"
+    "    document.getElementById('pval').textContent=s.pan;"
+    "    document.getElementById('tval').textContent=s.tilt;"
+    "    if(window.__joyFrom) window.__joyFrom(s.pan,s.tilt);"
     "  }"
     "}"
     "function togglePower(){send('on='+(on?0:1));}"
