@@ -171,8 +171,23 @@ uint32_t angleToDuty(int angle) {
 float curPan  = 90;
 float curTilt = 90;
 unsigned long lastServoStep = 0;
+unsigned long lastMoveTime  = 0;   // коли серво востаннє рухалось
+bool servoLive = true;             // чи подається зараз сигнал на серво
 const int   SERVO_STEP_MS = 10;    // як часто оновлювати (мс)
-const float SERVO_SPEED   = 5.0;   // градусів за крок (більше = різкіше/швидше, менше = плавніше)
+const float SERVO_SPEED   = 5.0;   // градусів за крок (більше = різкіше, менше = плавніше)
+// Через скільки мс після зупинки ЗНЯТИ сигнал (прибирає джитер/гудіння).
+// 0 = тримати сигнал завжди (якщо серво провисає під вагою — постав 0).
+const unsigned long SERVO_HOLD_MS = 700;
+
+void writeServo(bool live) {
+  if (live) {
+    ledcWriteCompat(PAN_PIN,  PAN_CH,  angleToDuty((int)curPan));
+    ledcWriteCompat(TILT_PIN, TILT_CH, angleToDuty((int)curTilt));
+  } else {
+    ledcWriteCompat(PAN_PIN,  PAN_CH,  0);   // 0 = нема імпульсу -> серво "відпускається", не дрижить
+    ledcWriteCompat(TILT_PIN, TILT_CH, 0);
+  }
+}
 
 void applyServo() {
   if (millis() - lastServoStep < SERVO_STEP_MS) return;
@@ -181,14 +196,24 @@ void applyServo() {
   float tp = constrain(panAngle, 0, 180);
   float tt = constrain(tiltAngle, 0, 180);
 
-  // рухаємо curPan до цілі не швидше SERVO_SPEED за крок
-  if      (curPan < tp) curPan = min(tp, curPan + SERVO_SPEED);
-  else if (curPan > tp) curPan = max(tp, curPan - SERVO_SPEED);
-  if      (curTilt < tt) curTilt = min(tt, curTilt + SERVO_SPEED);
-  else if (curTilt > tt) curTilt = max(tt, curTilt - SERVO_SPEED);
+  bool moving = false;
+  if      (curPan < tp) { curPan = min(tp, curPan + SERVO_SPEED); moving = true; }
+  else if (curPan > tp) { curPan = max(tp, curPan - SERVO_SPEED); moving = true; }
+  if      (curTilt < tt) { curTilt = min(tt, curTilt + SERVO_SPEED); moving = true; }
+  else if (curTilt > tt) { curTilt = max(tt, curTilt - SERVO_SPEED); moving = true; }
 
-  ledcWriteCompat(PAN_PIN,  PAN_CH,  angleToDuty((int)curPan));
-  ledcWriteCompat(TILT_PIN, TILT_CH, angleToDuty((int)curTilt));
+  if (moving) {
+    lastMoveTime = millis();
+    servoLive = true;
+    writeServo(true);
+  } else if (SERVO_HOLD_MS == 0) {
+    writeServo(true);                                   // тримати сигнал завжди
+  } else if (servoLive && millis() - lastMoveTime >= SERVO_HOLD_MS) {
+    servoLive = false;
+    writeServo(false);                                 // доїхало й постояло -> знімаємо сигнал
+  } else if (servoLive) {
+    writeServo(true);                                  // ще в межах утримання
+  }
 }
 
 // ----------------------------------------------------------------------------
