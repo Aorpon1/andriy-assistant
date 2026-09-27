@@ -174,7 +174,7 @@ unsigned long lastServoStep = 0;
 unsigned long lastMoveTime  = 0;   // коли серво востаннє рухалось
 bool servoLive = true;             // чи подається зараз сигнал на серво
 const int   SERVO_STEP_MS = 10;    // як часто оновлювати (мс)
-const float SERVO_SPEED   = 5.0;   // градусів за крок (більше = різкіше, менше = плавніше)
+const float SERVO_SMOOTH  = 0.22;  // згладжування 0..1: більше=різкіше/швидше, менше=плавніше
 // Через скільки мс після зупинки ЗНЯТИ сигнал (прибирає джитер/гудіння).
 // 0 = тримати сигнал завжди (якщо серво провисає під вагою — постав 0).
 const unsigned long SERVO_HOLD_MS = 700;
@@ -197,10 +197,10 @@ void applyServo() {
   float tt = constrain(tiltAngle, 0, 180);
 
   bool moving = false;
-  if      (curPan < tp) { curPan = min(tp, curPan + SERVO_SPEED); moving = true; }
-  else if (curPan > tp) { curPan = max(tp, curPan - SERVO_SPEED); moving = true; }
-  if      (curTilt < tt) { curTilt = min(tt, curTilt + SERVO_SPEED); moving = true; }
-  else if (curTilt > tt) { curTilt = max(tt, curTilt - SERVO_SPEED); moving = true; }
+  float dp = tp - curPan, dt = tt - curTilt;
+  // Експоненційне згладжування: плавне прискорення й гальмування біля цілі
+  if (fabs(dp) > 0.4) { curPan  += dp * SERVO_SMOOTH; moving = true; } else curPan  = tp;
+  if (fabs(dt) > 0.4) { curTilt += dt * SERVO_SMOOTH; moving = true; } else curTilt = tt;
 
   if (moving) {
     lastMoveTime = millis();
@@ -290,6 +290,9 @@ String buildPage() {
     ".sec{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#7c6f99;"
     "margin:26px 0 14px;border-top:1px solid rgba(167,139,250,.12);padding-top:18px}"
     ".hint{font-size:12px;color:#7c6f99;text-align:center;margin-top:8px}"
+    ".dot{float:right;font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px}"
+    ".dot.on{background:rgba(34,197,94,.15);color:#4ade80}"
+    ".dot.off{background:rgba(239,68,68,.15);color:#f87171}"
     ".joy{width:240px;height:240px;margin:6px auto 0;border-radius:28px;position:relative;"
     "background:radial-gradient(circle at 50% 50%,rgba(167,139,250,.14),rgba(167,139,250,.05));"
     "border:1px solid rgba(167,139,250,.28);touch-action:none;overflow:hidden}"
@@ -297,10 +300,10 @@ String buildPage() {
     ".joy .cx{left:0;right:0;top:50%;height:1px}.joy .cy{top:0;bottom:0;left:50%;width:1px}"
     ".knob{width:72px;height:72px;border-radius:50%;position:absolute;left:84px;top:84px;"
     "background:radial-gradient(circle at 35% 30%,#c4b5fd,#7c3aed);"
-    "box-shadow:0 6px 18px rgba(124,58,237,.55);touch-action:none;transition:left .04s,top .04s}"
+    "box-shadow:0 6px 18px rgba(124,58,237,.55);touch-action:none}"
     "</style></head><body>"
     "<div class='card'>"
-    "<h1>FPV Light</h1>"
+    "<h1>FPV Light <span id='conn' class='dot off'>&#9679; офлайн</span></h1>"
     "<div class='sub'>ESP32 — веб-морда</div>"
     "<div class='row'>"
     "<button id='power' class='btn-off' onclick='togglePower()'>УВІМКНУТИ</button>"
@@ -384,8 +387,10 @@ String buildPage() {
     "}"
     "function togglePower(){send('on='+(on?0:1));}"
     "function toggleStrobe(){send('strobe='+(strobe?0:1));}"
-    "fetch('/state').then(r=>r.json()).then(apply);"
-    "setInterval(()=>{if(!dragging)fetch('/state').then(r=>r.json()).then(apply);},600);"
+    "function setConn(ok){var c=document.getElementById('conn');c.className='dot '+(ok?'on':'off');c.innerHTML=ok?'&#9679; онлайн':'&#9679; офлайн';}"
+    "function poll(){fetch('/state').then(r=>r.json()).then(function(s){setConn(true);apply(s);}).catch(function(){setConn(false);});}"
+    "poll();"
+    "setInterval(function(){if(!dragging)poll();},600);"
     "</script>"
     "</body></html>"
   );
