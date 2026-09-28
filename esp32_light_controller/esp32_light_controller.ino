@@ -34,6 +34,7 @@
  */
 
 #define ENABLE_ESPNOW 0        // 0 = тільки WiFi/веб (пульта ще нема); 1 = + ESP-NOW
+#define WIFI_AP_MODE  1        // 1 = плата роздає свій WiFi (FPV-Light); 0 = підключається до домашнього
 
 #include <WiFi.h>
 #include <WebServer.h>
@@ -444,7 +445,17 @@ void setup() {
   applyLight();
   applyServo();
 
-  // WiFi: пробуємо домашній (STA), інакше піднімаємо свою точку
+#if WIFI_AP_MODE
+  // РЕЖИМ ТОЧКИ ДОСТУПУ: плата роздає власний WiFi
+  WiFi.mode(WIFI_AP);
+  if (strlen(AP_PASS) >= 8) WiFi.softAP(AP_SSID, AP_PASS, WIFI_CHANNEL);
+  else                      WiFi.softAP(AP_SSID, NULL, WIFI_CHANNEL);
+  Serial.print(">>> WiFi мережа: \""); Serial.print(AP_SSID);
+  Serial.print("\"  пароль: "); Serial.println(AP_PASS);
+  Serial.print(">>> Підключись до неї й відкрий: http://");
+  Serial.println(WiFi.softAPIP());   // зазвичай 192.168.4.1
+#else
+  // РЕЖИМ КЛІЄНТА: підключаємось до домашнього WiFi, інакше запасна точка
   WiFi.mode(WIFI_STA);
   WiFi.begin(STA_SSID, STA_PASS);
   Serial.print("Підключення до WiFi \""); Serial.print(STA_SSID); Serial.print("\" ");
@@ -453,7 +464,6 @@ void setup() {
     delay(300);
     Serial.print(".");
   }
-
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println(" OK");
     Serial.print(">>> ЗАХОДЬ ПО ЛОКАЛЦІ: http://");
@@ -466,6 +476,7 @@ void setup() {
     Serial.print(">>> Запасна точка \""); Serial.print(AP_SSID);
     Serial.print("\", заходь: http://"); Serial.println(WiFi.softAPIP());
   }
+#endif
 
   if (MDNS.begin(MDNS_NAME)) {
     Serial.print(">>> Або: http://"); Serial.print(MDNS_NAME); Serial.println(".local");
